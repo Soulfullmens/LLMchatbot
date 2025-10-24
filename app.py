@@ -74,6 +74,10 @@ def initialize_session_state():
         st.session_state.model = "Meta Llama 3.3 70B (Free)"
     if "selected_template" not in st.session_state:
         st.session_state.selected_template = None
+    if "follow_up_suggestions" not in st.session_state:
+        st.session_state.follow_up_suggestions = []
+    if "show_suggestions" not in st.session_state:
+        st.session_state.show_suggestions = True
 
 def get_response_stream(client, messages, model_id):
     try:
@@ -119,6 +123,38 @@ def export_as_text(messages, domain, model):
     
     return "\n".join(lines)
 
+def generate_follow_up_suggestions(client, messages, domain, model_id):
+    try:
+        recent_context = messages[-4:] if len(messages) > 4 else messages
+        
+        suggestion_prompt = {
+            "role": "system",
+            "content": f"""Based on the conversation, generate exactly 3 brief follow-up questions that the user might want to ask next in the {domain} domain. 
+            Make them specific, relevant, and concise (under 15 words each).
+            Return only the questions, one per line, numbered 1-3."""
+        }
+        
+        response = client.chat.completions.create(
+            model=model_id,
+            messages=[suggestion_prompt] + recent_context,
+            max_tokens=200,
+            stream=False
+        )
+        
+        suggestions_text = response.choices[0].message.content.strip()
+        suggestions = []
+        
+        for line in suggestions_text.split('\n'):
+            line = line.strip()
+            if line and (line[0].isdigit() or line.startswith('-') or line.startswith('•')):
+                clean_line = line.lstrip('0123456789.-•) ').strip()
+                if clean_line:
+                    suggestions.append(clean_line)
+        
+        return suggestions[:3]
+    except Exception as e:
+        return []
+
 def main():
     st.title("🤖 AI Domain Assistant")
     st.markdown("**Your specialized AI chatbot for Legal, Medical, and Education topics**")
@@ -162,6 +198,14 @@ def main():
                 if st.button(template, key=f"template_{template[:20]}", use_container_width=True):
                     st.session_state.selected_template = template
                     st.rerun()
+        
+        st.divider()
+        
+        st.session_state.show_suggestions = st.checkbox(
+            "✨ Show Follow-up Suggestions",
+            value=st.session_state.show_suggestions,
+            help="Display AI-generated follow-up questions after each response"
+        )
         
         st.divider()
         
@@ -212,9 +256,23 @@ def main():
     chat_container = st.container()
     
     with chat_container:
-        for message in st.session_state.messages:
+        for i, message in enumerate(st.session_state.messages):
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
+            
+            is_last_message = (i == len(st.session_state.messages) - 1)
+            is_assistant = (message["role"] == "assistant")
+            
+            if is_last_message and is_assistant and st.session_state.show_suggestions:
+                if st.session_state.follow_up_suggestions:
+                    st.markdown("**💡 Suggested follow-up questions:**")
+                    cols = st.columns(3)
+                    for idx, suggestion in enumerate(st.session_state.follow_up_suggestions):
+                        with cols[idx % 3]:
+                            if st.button(suggestion, key=f"suggestion_{idx}_{len(st.session_state.messages)}", use_container_width=True):
+                                st.session_state.selected_template = suggestion
+                                st.session_state.follow_up_suggestions = []
+                                st.rerun()
     
     prompt = None
     
@@ -254,6 +312,17 @@ def main():
                 message_placeholder.markdown(full_response)
         
         st.session_state.messages.append({"role": "assistant", "content": full_response})
+        
+        if st.session_state.show_suggestions:
+            suggestions = generate_follow_up_suggestions(
+                client,
+                st.session_state.messages,
+                st.session_state.domain,
+                MODEL_OPTIONS[st.session_state.model]
+            )
+            st.session_state.follow_up_suggestions = suggestions
+        
+        st.rerun()
 
 if __name__ == "__main__":
     main()
