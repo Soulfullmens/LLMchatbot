@@ -29,6 +29,27 @@ MODEL_OPTIONS = {
     "Gemini 2.0 Flash (Free)": "google/gemini-2.0-flash-exp:free"
 }
 
+CONVERSATION_TEMPLATES = {
+    "Legal": [
+        "What are the key elements of a valid contract?",
+        "Explain the difference between civil and criminal law.",
+        "What should I know about intellectual property rights?",
+        "What are my rights as a tenant?"
+    ],
+    "Medical": [
+        "What are the symptoms and treatment options for common cold?",
+        "Explain how vaccines work in the human body.",
+        "What lifestyle changes can help prevent heart disease?",
+        "What are the differences between bacteria and viruses?"
+    ],
+    "Education": [
+        "Explain the concept of photosynthesis in simple terms.",
+        "What are effective study techniques for memorization?",
+        "How does the water cycle work?",
+        "What is the Pythagorean theorem and how is it used?"
+    ]
+}
+
 def initialize_client():
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
@@ -51,6 +72,8 @@ def initialize_session_state():
         st.session_state.domain = "Legal"
     if "model" not in st.session_state:
         st.session_state.model = "Meta Llama 3.3 70B (Free)"
+    if "selected_template" not in st.session_state:
+        st.session_state.selected_template = None
 
 def get_response_stream(client, messages, model_id):
     try:
@@ -132,6 +155,16 @@ def main():
         
         st.divider()
         
+        with st.expander("💬 Conversation Templates", expanded=False):
+            st.caption("Click a template to start your conversation:")
+            templates = CONVERSATION_TEMPLATES.get(st.session_state.domain, [])
+            for template in templates:
+                if st.button(template, key=f"template_{template[:20]}", use_container_width=True):
+                    st.session_state.selected_template = template
+                    st.rerun()
+        
+        st.divider()
+        
         if st.button("🗑️ Clear Chat History", use_container_width=True):
             st.session_state.messages = []
             st.rerun()
@@ -183,7 +216,15 @@ def main():
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
     
-    if prompt := st.chat_input("Type your message here..."):
+    prompt = None
+    
+    if st.session_state.selected_template:
+        prompt = st.session_state.selected_template
+        st.session_state.selected_template = None
+    elif user_input := st.chat_input("Type your message here..."):
+        prompt = user_input
+    
+    if prompt:
         st.session_state.messages.append({"role": "user", "content": prompt})
         
         with chat_container:
