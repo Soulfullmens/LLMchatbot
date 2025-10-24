@@ -1,5 +1,7 @@
 import streamlit as st
 import os
+import json
+from datetime import datetime
 from openai import OpenAI
 
 st.set_page_config(page_title="AI Domain Assistant", page_icon="🤖", layout="wide")
@@ -66,6 +68,34 @@ def get_response_stream(client, messages, model_id):
     except Exception as e:
         yield f"Error: {str(e)}"
 
+def export_as_json(messages, domain, model):
+    export_data = {
+        "export_date": datetime.now().isoformat(),
+        "domain": domain,
+        "model": model,
+        "conversation": messages
+    }
+    return json.dumps(export_data, indent=2)
+
+def export_as_text(messages, domain, model):
+    lines = [
+        f"AI Domain Assistant - Conversation Export",
+        f"Export Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"Domain: {domain}",
+        f"Model: {model}",
+        f"{'=' * 60}",
+        ""
+    ]
+    
+    for msg in messages:
+        role = msg["role"].upper()
+        content = msg["content"]
+        lines.append(f"{role}:")
+        lines.append(content)
+        lines.append("")
+    
+    return "\n".join(lines)
+
 def main():
     st.title("🤖 AI Domain Assistant")
     st.markdown("**Your specialized AI chatbot for Legal, Medical, and Education topics**")
@@ -107,6 +137,42 @@ def main():
             st.rerun()
         
         st.divider()
+        
+        if len(st.session_state.messages) > 0:
+            st.subheader("📥 Export Conversation")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                json_data = export_as_json(
+                    st.session_state.messages,
+                    st.session_state.domain,
+                    st.session_state.model
+                )
+                st.download_button(
+                    label="JSON",
+                    data=json_data,
+                    file_name=f"conversation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                    mime="application/json",
+                    use_container_width=True
+                )
+            
+            with col2:
+                text_data = export_as_text(
+                    st.session_state.messages,
+                    st.session_state.domain,
+                    st.session_state.model
+                )
+                st.download_button(
+                    label="TXT",
+                    data=text_data,
+                    file_name=f"conversation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                    mime="text/plain",
+                    use_container_width=True
+                )
+            
+            st.divider()
+        
         st.caption("💡 **About**")
         st.caption(f"This chatbot uses OpenRouter to access various AI models. Currently using the {st.session_state.domain} domain with specialized knowledge.")
     
